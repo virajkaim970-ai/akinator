@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🧞 Akinator — Mind Reader</title>
+<style>
+  :root{
+    --bg1:#0f0c29; --bg2:#302b63; --bg3:#24243e;
+    --accent:#8b5cf6; --accent2:#06b6d4;
+    --card:rgba(255,255,255,0.07);
+    --border:rgba(255,255,255,0.15);
+    --text:#f1f5f9; --muted:#a5b4fc;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    min-height:100vh;
+    font-family:'Segoe UI', system-ui, -apple-system, sans-serif;
+    background:linear-gradient(135deg,var(--bg1),var(--bg2),var(--bg3));
+    background-size:300% 300%;
+    animation:bgShift 18s ease infinite;
+    color:var(--text);
+    display:flex; align-items:center; justify-content:center;
+    padding:20px;
+  }
+  @keyframes bgShift{
+    0%{background-position:0% 50%}
+    50%{background-position:100% 50%}
+    100%{background-position:0% 50%}
+  }
+
+  .app{
+    width:100%; max-width:640px;
+    background:var(--card);
+    backdrop-filter:blur(16px);
+    -webkit-backdrop-filter:blur(16px);
+    border:1px solid var(--border);
+    border-radius:24px;
+    padding:32px 28px;
+    box-shadow:0 20px 60px rgba(0,0,0,.5);
+    animation:fadeIn .5s ease;
+  }
+  @keyframes fadeIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+
+  h1{
+    font-size:1.75rem; text-align:center; margin-bottom:6px;
+    background:linear-gradient(90deg,var(--accent),var(--accent2));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .sub{text-align:center; color:var(--muted); font-size:.9rem; margin-bottom:24px;}
+
+  .progress{
+    height:6px; background:rgba(255,255,255,.1);
+    border-radius:99px; overflow:hidden; margin-bottom:24px;
+  }
+  .progress > div{
+    height:100%; width:0%;
+    background:linear-gradient(90deg,var(--accent),var(--accent2));
+    transition:width .4s ease;
+  }
+
+  .question{
+    font-size:1.25rem; text-align:center; line-height:1.5;
+    margin:16px 0 28px; min-height:60px;
+    display:flex; align-items:center; justify-content:center;
+  }
+
+  .answers{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  .answers.full{grid-template-columns:1fr;}
+
+  button{
+    font-family:inherit; font-size:.95rem; font-weight:600;
+    padding:14px 18px; border-radius:14px; cursor:pointer;
+    border:1px solid var(--border);
+    background:rgba(255,255,255,.06);
+    color:var(--text);
+    transition:transform .12s ease, background .2s ease, box-shadow .2s ease;
+  }
+  button:hover{background:rgba(255,255,255,.14); transform:translateY(-2px);}
+  button:active{transform:translateY(0);}
+  button.primary{
+    background:linear-gradient(90deg,var(--accent),var(--accent2));
+    border:none; color:#fff;
+    box-shadow:0 8px 24px rgba(139,92,246,.4);
+  }
+  button.primary:hover{box-shadow:0 12px 30px rgba(139,92,246,.55);}
+  button.ghost{background:transparent;}
+  button:disabled{opacity:.4; cursor:not-allowed; transform:none;}
+
+  .yes{color:#4ade80;} .no{color:#f87171;}
+  .prob{color:#fbbf24;} .probno{color:#fb923c;}
+
+  .guess{
+    text-align:center; padding:24px 0;
+  }
+  .guess .name{
+    font-size:2rem; font-weight:800; margin:12px 0;
+    background:linear-gradient(90deg,var(--accent),var(--accent2));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+
+  .emoji{font-size:3rem; display:block; text-align:center; margin-bottom:12px;}
+
+  input[type=text]{
+    width:100%; padding:14px 16px; border-radius:14px;
+    border:1px solid var(--border);
+    background:rgba(0,0,0,.25); color:var(--text);
+    font-family:inherit; font-size:1rem; outline:none; margin-bottom:14px;
+  }
+  input[type=text]:focus{border-color:var(--accent);}
+
+  .stats{
+    display:flex; justify-content:space-between;
+    font-size:.78rem; color:var(--muted); margin-top:20px;
+  }
+
+  .fade{animation:fadeIn .35s ease;}
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+  <h1>🧞 Akinator</h1>
+  <p class="sub">Think of any character — I'll try to read your mind.</p>
+
+  <div class="progress"><div id="bar"></div></div>
+
+  <div id="stage"></div>
+
+  <div class="stats">
+    <span id="qcount">Questions: 0</span>
+    <span id="ccount">Candidates: —</span>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   TRAITS  (key -> question text)
+============================================================ */
+const TRAITS = {
+  real:      "Is your character a real person (not fictional)?",
+  human:     "Is your character human?",
+  male:      "Is your character male?",
+  superhero: "Is your character a superhero?",
+  villain:   "Is your character a villain / bad guy?",
+  magic:     "Does your character use magic?",
+  animated:  "Is your character from a cartoon or anime?",
+  videogame: "Is your character from a video game?",
+  movie:     "Has your character appeared in a movie?",
+  powers:    "Does your character have superpowers or special abilities?",
+  weapon:    "Does your character use a weapon?",
+  child:     "Is your character a child or teenager?",
+  animal:    "Is your character an animal or non-human creature?",
+  glasses:   "Does your character wear glasses?",
+  royalty:   "Is your character royalty, a ruler, or a leader?",
+  space:     "Is your character associated with space or aliens?",
+  scientist: "Is your character a scientist or inventor?",
+  immortal:  "Is your character immortal or very long-lived?",
+  costume:   "Does your character wear a distinctive costume or outfit?",
+  singing:   "Is your character known for singing or music?"
+};
+
+/* ============================================================
+   BASE CHARACTERS (traits each one HAS)
+============================================================ */
+const BASE = {
+  "Harry Potter":          ["human","male","magic","movie","child","glasses","weapon","costume"],
+  "Hermione Granger":      ["human","magic","movie","child","glasses"],
+  "Lord Voldemort":        ["male","villain","magic","movie","weapon"],
+  "Albus Dumbledore":      ["human","male","magic","movie","glasses","weapon","royalty","immortal"],
+  "Darth Vader":           ["human","male","villain","movie","weapon","powers","space","costume"],
+  "Yoda":                  ["male","movie","weapon","powers","space","immortal"],
+  "Luke Skywalker":        ["human","male","movie","weapon","powers","space","costume"],
+  "Batman":                ["human","male","superhero","movie","weapon","costume","scientist"],
+  "Superman":              ["male","superhero","movie","powers","costume","space"],
+  "Spider-Man":            ["human","male","superhero","movie","powers","child","costume"],
+  "Iron Man":              ["human","male","superhero","movie","powers","scientist","costume","weapon","royalty"],
+  "Thanos":                ["male","villain","movie","powers","space","weapon"],
+  "The Hulk":              ["human","male","superhero","movie","powers","scientist"],
+  "The Joker":             ["male","villain","movie","costume"],
+  "Wonder Woman":          ["superhero","movie","powers","royalty","weapon","costume","immortal"],
+  "Mickey Mouse":          ["male","animated","animal","movie","costume"],
+  "Pikachu":               ["animated","videogame","animal","powers","movie"],
+  "Mario":                 ["male","videogame","movie","costume"],
+  "Sonic the Hedgehog":    ["male","animated","videogame","animal","powers","movie"],
+  "Naruto Uzumaki":        ["human","male","animated","powers","child","weapon","costume","royalty"],
+  "Goku":                  ["male","animated","powers","space"],
+  "Elsa":                  ["human","magic","animated","movie","royalty","singing","powers","costume"],
+  "Shrek":                 ["male","animated","movie","animal","costume"],
+  "SpongeBob SquarePants": ["male","animated","animal","singing","movie"],
+  "Homer Simpson":         ["male","animated","movie"],
+  "Sherlock Holmes":       ["human","male","movie"],
+  "Gandalf":               ["male","magic","movie","weapon","immortal","costume"],
+  "Albert Einstein":       ["real","human","male","scientist"],
+  "Taylor Swift":          ["real","human","singing"],
+  "Walter White":          ["human","male","villain","scientist"]
+};
+
+const DEFAULT_P = 0.1;   // P(trait) for an untagged character
+const MAX_Q     = 20;    // question budget before it starts guessing
+const STORE_KEY = "akinator_learned_v1";
+
+/* ============================================================
+   ENGINE
+============================================================ */
+class Akinator {
+  constructor(){
+    this.chars = {};
+    this.weights = {};
+    this.asked = {};
+    this.load();
+  }
+
+  load(){
+    for (const [name, ts] of Object.entries(BASE)){
+      const entry = {};
+      for (const t of ts) entry[t] = 0.9;
+      this.chars[name] = entry;
+    }
+    try{
+      const saved = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
+      for (const [name, traits] of Object.entries(saved)){
+        this.chars[name] = traits;
+      }
+    }catch(e){ /* ignore */ }
+  }
+
+  saveLearned(name, entry){
+    let saved = {};
+    try{ saved = JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); }catch(e){}
+    saved[name] = entry;
+    try{ localStorage.setItem(STORE_KEY, JSON.stringify(saved)); }catch(e){}
+  }
+
+  pOf(char, trait){
+    const v = this.chars[char]?.[trait];
+    return v === undefined ? DEFAULT_P : v;
+  }
+
+  reset(){
+    const n = Object.keys(this.chars).length;
+    this.weights = {};
+    for (const c of Object.keys(this.chars)) this.weights[c] = 1/n;
+    this.asked = {};
+  }
+
+  normalize(){
+    let s = 0;
+    for (const k in this.weights) s += this.weights[k];
+    if (s > 0) for (const k in this.weights) this.weights[k] /= s;
+  }
+
+  update(trait, a){
+    // a: 1 = yes, 0 = no; intermediate for soft answers
+    for (const c in this.weights){
+      const p = this.pOf(c, trait);
+      const like = a * p + (1 - a) * (1 - p);
+      this.weights[c] *= Math.max(like, 1e-6);
+    }
+    this.normalize();
+  }
+
+  entropy(list){
+    let total = 0;
+    for (const w of list) total += w;
+    if (total <= 0) return 0;
+    let h = 0;
+    for (const w of list){
+      if (w > 0){
+        const p = w / total;
+        h -= p * Math.log2(p);
+      }
+    }
+    return h;
+  }
+
+  chooseQuestion(){
+    const current = this.entropy(Object.values(this.weights));
+    let best = null, bestGain = 1e-9;
+
+    for (const t of Object.keys(TRAITS)){
+      if (t in this.asked) continue;
+      const yes = [], no = [];
+      for (const c in this.weights){
+        const w = this.weights[c];
+        if (w <= 0) continue;
+        const p = this.pOf(c, t);
+        yes.push(w * p);
+        no.push(w * (1 - p));
+      }
+      let Y = 0, N = 0;
+      for (const v of yes) Y += v;
+      for (const v of no)  N += v;
+      if (Y <= 1e-9 || N <= 1e-9) continue;
+      const total = Y + N;
+      const newH = (Y/total) * this.entropy(yes) + (N/total) * this.entropy(no);
+      const gain = current - newH;
+      if (gain > bestGain){ bestGain = gain; best = t; }
+    }
+    return best;
+  }
+
+  bestGuess(exclude = new Set()){
+    let best = null, bw = -1;
+    for (const c in this.weights){
+      if (exclude.has(c)) continue;
+      if (this.weights[c] > bw){ bw = this.weights[c]; best = c; }
+    }
+    return best;
+  }
+
+  confidence(){
+    let m = 0;
+    for (const c in this.weights) m = Math.max(m, this.weights[c]);
+    return m;
+  }
+
+  candidates(threshold = 0.01){
+    return Object.keys(this.weights).filter(c => this.weights[c] > threshold);
+  }
+}
+
+/* ============================================================
+   UI CONTROLLER
+============================================================ */
+const app      = document.getElementById("app");
+const stage    = document.getElementById("stage");
+const bar      = document.getElementById("bar");
+const qcountEl = document.getElementById("qcount");
+const ccountEl = document.getElementById("ccount");
+
+const bot = new Akinator();
+let wrongGuesses = new Set();
+let qCount = 0;
+
+/* --- render helpers --- */
+function setProgress(pct){
+  bar.style.width = Math.min(100, Math.max(0, pct)) + "%";
+}
+
+function updateStats(){
+  qcountEl.textContent = "Questions: " + qCount;
+  ccountEl.textContent = "Candidates: " + bot.candidates().length;
+}
+
+function clearStage(){
+  stage.innerHTML = "";
+  stage.classList.remove("fade");
+  void stage.offsetWidth;   // force reflow to restart animation
+  stage.classList.add("fade");
+}
+
+/* --- screens --- */
+function renderStart(){
+  clearStage();
+  setProgress(0);
+  qcountEl.textContent = "Questions: 0";
+  ccountEl.textContent = "Candidates: —";
+
+  stage.innerHTML = `
+    <div class="emoji">🧞</div>
+    <div class="question">Think of a character — real or fictional. Ready?</div>
+    <div class="answers full">
+      <button class="primary" id="startBtn">I'm thinking of one ✨</button>
+    </div>`;
+  document.getElementById("startBtn").onclick = startGame;
+}
+
+function startGame(){
+  bot.reset();
+  wrongGuesses = new Set();
+  qCount = 0;
+  nextStep();
+}
+
+function nextStep(){
+  updateStats();
+
+  const guess = bot.bestGuess(wrongGuesses);
+  const ready =
+    guess !== null &&
+    (bot.confidence() >= 0.85 || bot.candidates().length <= 1 || qCount >= MAX_Q);
+
+  if (ready){
+    renderGuess(guess);
+    return;
+  }
+  if (qCount >= MAX_Q + 8){
+    renderLearnScreen();
+    return;
+  }
+
+  const trait = bot.chooseQuestion();
+  if (trait === null){
+    renderLearnScreen();
+    return;
+  }
+  renderQuestion(trait);
+}
+
+function renderQuestion(trait){
+  clearStage();
+  setProgress((qCount / MAX_Q) * 100);
+
+  stage.innerHTML = `
+    <div class="question">${TRAITS[trait]}</div>
+    <div class="answers">
+      <button class="yes"    id="y">✅ Yes</button>
+      <button class="no"     id="n">❌ No</button>
+      <button class="prob"   id="p">🤔 Probably</button>
+      <button class="probno" id="q">😕 Probably not</button>
+      <button class="ghost"  id="d" style="grid-column:1 / -1;">🤷 Don't know</button>
+    </div>`;
+
+  const answer = (val) => {
+    bot.asked[trait] = val;
+    if (val !== null) bot.update(trait, val);
+    qCount++;
+    nextStep();
+  };
+
+  document.getElementById("y").onclick = () => answer(1.0);
+  document.getElementById("n").onclick = () => answer(0.0);
+  document.getElementById("p").onclick = () => answer(0.75);
+  document.getElementById("q").onclick = () => answer(0.25);
+  document.getElementById("d").onclick = () => answer(null);
+}
+
+function renderGuess(name){
+  clearStage();
+  setProgress(100);
+
+  stage.innerHTML = `
+    <div class="guess">
+      <div class="emoji">🔮</div>
+      <div style="color:var(--muted)">I think your character is...</div>
+      <div class="name">${name}</div>
+      <div class="answers" style="margin-top:20px;">
+        <button class="primary" id="correct">🎉 Yes!</button>
+        <button class="ghost"   id="wrong">😅 Nope</button>
+      </div>
+    </div>`;
+
+  document.getElementById("correct").onclick = () => renderWin(name);
+  document.getElementById("wrong").onclick = () => {
+    wrongGuesses.add(name);
+    bot.weights[name] = 0;
+
+    let total = 0;
+    for (const c in bot.weights) total += bot.weights[c];
+    if (total <= 0){ renderLearnScreen(); return; }
+
+    // don't count re-asks against the budget too harshly
+    nextStep();
+  };
+}
+
+function renderWin(name){
+  clearStage();
+  setProgress(100);
+  stage.innerHTML = `
+    <div class="guess">
+      <div class="emoji">🎉</div>
+      <div class="name">${name}</div>
+      <div style="color:var(--muted); margin-bottom:22px;">
+        I read your mind in ${qCount} questions!
+      </div>
+      <div class="answers full">
+        <button class="primary" id="again">Play again</button>
+      </div>
+    </div>`;
+  document.getElementById("again").onclick = startGame;
+}
+
+function renderLearnScreen(){
+  clearStage();
+  setProgress(100);
+
+  stage.innerHTML = `
+    <div class="guess">
+      <div class="emoji">😅</div>
+      <div style="margin-bottom:16px;">You win — I couldn't guess it.<br>
+        <span style="color:var(--muted)">Teach me who it was?</span>
+      </div>
+      <input type="text" id="nameInput" placeholder="Character name..." autocomplete="off">
+      <div class="answers">
+        <button class="primary" id="teachBtn">Teach me 🧠</button>
+        <button class="ghost"   id="skipBtn">Skip</button>
+      </div>
+    </div>`;
+
+  const input = document.getElementById("nameInput");
+  input.focus();
+
+  const teach = () => {
+    const name = input.value.trim();
+    if (!name){
+      input.style.borderColor = "#f87171";
+      return;
+    }
+    askExtraQuestions(name);
+  };
+
+  document.getElementById("teachBtn").onclick = teach;
+  input.addEventListener("keydown", e => { if (e.key === "Enter") teach(); });
+  document.getElementById("skipBtn").onclick = renderStart;
+}
+
+function askExtraQuestions(name){
+  // Build a fresh entry based on already-answered traits + a few more
+  const entry = {};
+  for (const t of Object.keys(TRAITS)) entry[t] = 0.5;
+
+  for (const [t, a] of Object.entries(bot.asked)){
+    if (a !== null) entry[t] = a * 0.9 + (1 - a) * 0.1;
+  }
+
+  const missing = Object.keys(TRAITS).filter(t => !(t in bot.asked));
+  const toAsk  = missing.slice(0, 6);
+  let idx = 0;
+
+  function askNext(){
+    if (idx >= toAsk.length){ finish(); return; }
+    const trait = toAsk[idx];
+    clearStage();
+    stage.innerHTML = `
+      <div class="question" style="font-size:1.1rem;">
+        Help me learn <strong>${name}</strong>:<br><br>${TRAITS[trait]}
+      </div>
+      <div class="answers">
+        <button class="yes"    id="y">✅ Yes</button>
+        <button class="no"     id="n">❌ No</button>
+        <button class="prob"   id="p">🤔 Probably</button>
+        <button class="probno" id="q">😕 Probably not</button>
+        <button class="ghost"  id="d" style="grid-column:1 / -1;">🤷 Skip</button>
+      </div>`;
+
+    const answer = (val) => {
+      if (val !== null) entry[trait] = val * 0.9 + (1 - val) * 0.1;
+      idx++;
+      askNext();
+    };
+    document.getElementById("y").onclick = () => answer(1.0);
+    document.getElementById("n").onclick = () => answer(0.0);
+    document.getElementById("p").onclick = () => answer(0.75);
+    document.getElementById("q").onclick = () => answer(0.25);
+    document.getElementById("d").onclick = () => answer(null);
+  }
+
+  function finish(){
+    bot.chars[name] = entry;
+    bot.saveLearned(name, entry);
+    clearStage();
+    stage.innerHTML = `
+      <div class="guess">
+        <div class="emoji">✅</div>
+        <div style="margin-bottom:8px;">Got it — I'll remember
+          <strong style="color:var(--accent)">${name}</strong> next time!</div>
+        <div style="color:var(--muted); font-size:.85rem; margin-bottom:22px;">
+          Saved to your browser (localStorage).
+        </div>
+        <div class="answers full">
+          <button class="primary" id="again">Play again</button>
+        </div>
+      </div>`;
+    document.getElementById("again").onclick = startGame;
+  }
+
+  askNext();
+}
+
+/* boot */
+renderStart();
+</script>
+</body>
+</html>
